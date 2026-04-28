@@ -33,12 +33,12 @@ export default function DashboardIndex() {
           router.replace("/login");
           return;
         }
-        setError(e instanceof ApiError ? e.message : "Could not load queues");
+        setError(e instanceof ApiError ? e.message : t("dash.couldNotLoad"));
       });
     return () => {
       cancelled = true;
     };
-  }, [token, clear, router]);
+  }, [token, clear, router, t]);
 
   if (!ready || !token) return null;
 
@@ -62,12 +62,12 @@ export default function DashboardIndex() {
       )}
 
       {queues === null && !error && (
-        <p className="text-ink-subtle text-center py-12">Loading…</p>
+        <p className="text-ink-subtle text-center py-12">{t("common.loading")}</p>
       )}
 
       {queues && queues.length === 0 && (
         <div className="card p-6 text-center flex flex-col items-center gap-4">
-          <p className="text-ink-muted">No queues yet.</p>
+          <p className="text-ink-muted">{t("dash.noQueues")}</p>
           <Link href="/setup" className="btn-primary">
             {t("queue.create")}
           </Link>

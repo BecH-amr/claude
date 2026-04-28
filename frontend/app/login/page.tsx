@@ -37,7 +37,7 @@ export default function LoginPage() {
       setSession(session.access_token, session.business);
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong");
+      setError(err instanceof ApiError ? err.message : t("common.error"));
       setSubmitting(false);
     }
   }

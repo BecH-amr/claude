@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { QueueWsEvent } from "@/lib/types";
 
-type Status = "connecting" | "open" | "closed";
+type Status = "connecting" | "open" | "reconnecting" | "closed";
 
 function wsUrlFor(path: string): string {
   if (typeof window === "undefined") return "";
@@ -12,66 +12,88 @@ function wsUrlFor(path: string): string {
 }
 
 /**
- * Owner-authenticated dashboard channel. Token is passed as `?token=` because
+ * Owner-authenticated dashboard channel. Token passed as `?token=` because
  * browsers can't set Authorization headers on WebSocket upgrades.
  *
- * Avoids reconnect storms when the token is rejected: a 1008 close with no
- * prior `open` halts retries.
+ * Mirrors the public hook's correctness pattern (timer in ref, per-socket
+ * stale-close guard) and additionally halts reconnects on ANY 1008 close
+ * (policy violation = unauthorized / not-your-queue / queue-not-found),
+ * even after a previously successful open. That last bit prevents an
+ * infinite reconnect storm after the backend revokes a token mid-session.
  */
 export function useDashboardSocket(queueId: number | null, token: string | null) {
   const [event, setEvent] = useState<QueueWsEvent | null>(null);
   const [status, setStatus] = useState<Status>("connecting");
   const wsRef = useRef<WebSocket | null>(null);
   const retryRef = useRef(0);
-  const everOpened = useRef(false);
-  const closedByUs = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelledRef = useRef(false);
 
   useEffect(() => {
     if (queueId === null || !token) return;
-    closedByUs.current = false;
-    everOpened.current = false;
-    let cancelTimer: ReturnType<typeof setTimeout> | null = null;
+    cancelledRef.current = false;
+    retryRef.current = 0;
+
+    const safePath =
+      `/api/ws/dashboard/${encodeURIComponent(String(queueId))}` +
+      `?token=${encodeURIComponent(token)}`;
 
     const connect = () => {
-      setStatus("connecting");
-      const ws = new WebSocket(
-        wsUrlFor(`/api/ws/dashboard/${queueId}?token=${encodeURIComponent(token)}`),
-      );
+      if (cancelledRef.current) return;
+      setStatus(retryRef.current === 0 ? "connecting" : "reconnecting");
+      const ws = new WebSocket(wsUrlFor(safePath));
       wsRef.current = ws;
 
-      ws.onopen = () => {
+      ws.addEventListener("open", () => {
+        if (cancelledRef.current) {
+          ws.close(1000);
+          return;
+        }
         retryRef.current = 0;
-        everOpened.current = true;
         setStatus("open");
-      };
-      ws.onmessage = (e) => {
+      });
+
+      ws.addEventListener("message", (e) => {
+        if (cancelledRef.current) return;
         try {
           setEvent(JSON.parse(e.data) as QueueWsEvent);
         } catch {
           // ignore malformed
         }
-      };
-      ws.onclose = (ev) => {
-        setStatus("closed");
-        if (closedByUs.current) return;
-        // 1008 = policy violation. If we never even opened, the token was
-        // rejected — don't retry.
-        if (ev.code === 1008 && !everOpened.current) return;
-        const backoff = Math.min(30_000, 500 * 2 ** retryRef.current);
+      });
+
+      ws.addEventListener("close", (ev) => {
+        // Stale-socket guard: if a newer effect run already replaced wsRef,
+        // ignore this old close so it doesn't schedule a stray reconnect.
+        if (ws !== wsRef.current) return;
+        if (cancelledRef.current) {
+          setStatus("closed");
+          return;
+        }
+        // Halt on 1008 (policy violation) — token revoked, queue gone, or
+        // ownership changed. Retrying just spams the backend.
+        if (ev.code === 1008) {
+          setStatus("closed");
+          return;
+        }
+        const ceiling = Math.min(30_000, 500 * 2 ** retryRef.current);
+        const backoff = Math.floor(ceiling * (0.5 + Math.random() * 0.5));
         retryRef.current += 1;
-        cancelTimer = setTimeout(connect, backoff);
-      };
-      ws.onerror = () => {
-        // onclose follows
-      };
+        setStatus("reconnecting");
+        timerRef.current = setTimeout(connect, backoff);
+      });
     };
 
     connect();
 
     return () => {
-      closedByUs.current = true;
-      if (cancelTimer) clearTimeout(cancelTimer);
-      wsRef.current?.close();
+      cancelledRef.current = true;
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      wsRef.current?.close(1000);
+      wsRef.current = null;
     };
   }, [queueId, token]);
 

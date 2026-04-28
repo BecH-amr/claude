@@ -60,6 +60,11 @@ const dict = {
     "common.cancel": "Cancel",
     "common.save": "Save",
     "common.signOut": "Sign out",
+    "common.loading": "Loading…",
+    "common.tryAgain": "Try again",
+    "common.error": "Something went wrong",
+    "dash.noQueues": "No queues yet.",
+    "dash.couldNotLoad": "Couldn't load",
   },
   fr: {
     "app.tagline": "Plus de file. Attendez où vous voulez.",
@@ -102,6 +107,11 @@ const dict = {
     "common.cancel": "Annuler",
     "common.save": "Enregistrer",
     "common.signOut": "Se déconnecter",
+    "common.loading": "Chargement…",
+    "common.tryAgain": "Réessayer",
+    "common.error": "Quelque chose a échoué",
+    "dash.noQueues": "Aucune file pour le moment.",
+    "dash.couldNotLoad": "Chargement impossible",
   },
   ar: {
     "app.tagline": "تخطَّ الطابور. انتظر أينما تريد.",
@@ -144,6 +154,11 @@ const dict = {
     "common.cancel": "إلغاء",
     "common.save": "حفظ",
     "common.signOut": "تسجيل الخروج",
+    "common.loading": "جارٍ التحميل…",
+    "common.tryAgain": "حاول مجددًا",
+    "common.error": "حدث خطأ ما",
+    "dash.noQueues": "لا توجد طوابير بعد.",
+    "dash.couldNotLoad": "تعذّر التحميل",
   },
 } as const;
 

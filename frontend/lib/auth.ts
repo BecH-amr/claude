@@ -46,6 +46,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(BIZ_KEY);
     setToken(null);
     setBusiness(null);
+    // Defense-in-depth: even though next-pwa is configured NetworkOnly for
+    // /api/*, a user who installed an older build may have an `apis` cache
+    // with previous-owner data. Flush on sign-out.
+    if (typeof caches !== "undefined") {
+      caches
+        .keys()
+        .then((names) =>
+          Promise.all(names.filter((n) => n === "apis").map((n) => caches.delete(n))),
+        )
+        .catch(() => {});
+    }
   };
 
   return createElement(

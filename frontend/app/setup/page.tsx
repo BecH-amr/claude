@@ -34,7 +34,7 @@ export default function SetupPage() {
       });
       router.push(`/dashboard/${queue.id}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not create queue");
+      setError(err instanceof ApiError ? err.message : t("common.error"));
       setSubmitting(false);
     }
   }
@@ -42,7 +42,7 @@ export default function SetupPage() {
   if (!ready) {
     return (
       <div className="flex flex-col h-full justify-center text-center text-ink-subtle">
-        Loading…
+        {t("common.loading")}
       </div>
     );
   }
