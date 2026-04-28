@@ -8,16 +8,32 @@ from app.models.queue import QueueStatus
 from app.models.ticket import TicketSource, TicketStatus
 
 
-# E.164: leading +, country code 1-9, 6-14 more digits.
-# Rejecting non-E.164 phones up front avoids passing junk like "abc" or
-# "<script>" downstream to provider APIs and to logs.
-_E164_RE = re.compile(r"^\+[1-9]\d{6,14}$")
+# Phone format. Mauritania-first: 8 local digits starting with 2, 3, or 4
+# (the only valid mobile/landline prefixes assigned by ARE). The +222
+# country code is optional on input — we always normalize to +222XXXXXXXX
+# before storing so downstream code (WhatsApp/SMS providers, logs) sees a
+# single canonical form regardless of how the customer typed it.
+#
+# Accepts: "22065494", "20065494", "30000000", "+22220065494", "+222 2006 5494"
+# Rejects: "abc", "<script>", US numbers, any non-MR prefix
+_MR_LOCAL_RE = re.compile(r"^[234]\d{7}$")
+_MR_E164_RE = re.compile(r"^\+222[234]\d{7}$")
 
 
 def _validate_phone(value: str) -> str:
-    if not _E164_RE.match(value):
-        raise ValueError("phone must be in E.164 format, e.g. +15550100")
-    return value
+    """Accept Mauritanian numbers in local or E.164 form; return E.164.
+
+    Strips spaces and dashes (formatting users naturally add) before checking.
+    """
+    cleaned = re.sub(r"[\s\-]", "", value)
+    if _MR_E164_RE.match(cleaned):
+        return cleaned
+    if _MR_LOCAL_RE.match(cleaned):
+        return f"+222{cleaned}"
+    raise ValueError(
+        "phone must be a Mauritanian number — 8 digits starting with 2, 3, or 4 "
+        "(optionally prefixed with +222), e.g. 22065494 or +22222065494"
+    )
 
 
 class BusinessRegister(BaseModel):

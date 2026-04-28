@@ -167,7 +167,7 @@ export default function JoinPage() {
               type="tel"
               autoComplete="tel"
               inputMode="tel"
-              placeholder="+15550100"
+              placeholder="22 06 54 94"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               maxLength={32}

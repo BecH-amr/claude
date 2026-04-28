@@ -43,6 +43,10 @@ const withPWA = withPWAInit({
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Standalone output ships a minimal runner that includes only the
+  // production deps actually traced from app code — drops the runner
+  // image from ~580MB (full node_modules) to ~150MB (traced subset).
+  output: "standalone",
   async rewrites() {
     const api = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
     return [{ source: "/api/:path*", destination: `${api}/api/:path*` }];

@@ -11,18 +11,18 @@ from .conftest import register
 async def test_register_returns_token_and_business(client: AsyncClient) -> None:
     r = await client.post(
         "/api/auth/register",
-        json={"name": "Joe", "phone": "+15550100", "password": "hunter22"},
+        json={"name": "Joe", "phone": "+22220000100", "password": "hunter22"},
     )
     assert r.status_code == 201
     body = r.json()
     assert body["token_type"] == "bearer"
     assert body["access_token"]
-    assert body["business"]["phone"] == "+15550100"
+    assert body["business"]["phone"] == "+22220000100"
     assert body["business"]["name"] == "Joe"
 
 
 async def test_register_duplicate_phone_returns_409(client: AsyncClient) -> None:
-    payload = {"name": "Joe", "phone": "+15550100", "password": "hunter22"}
+    payload = {"name": "Joe", "phone": "+22220000100", "password": "hunter22"}
     r1 = await client.post("/api/auth/register", json=payload)
     assert r1.status_code == 201
     r2 = await client.post("/api/auth/register", json=payload)
@@ -34,13 +34,13 @@ async def test_register_validation(client: AsyncClient) -> None:
     # Password too short
     r = await client.post(
         "/api/auth/register",
-        json={"name": "Joe", "phone": "+15550100", "password": "x"},
+        json={"name": "Joe", "phone": "+22220000100", "password": "x"},
     )
     assert r.status_code == 422
     # Empty name
     r = await client.post(
         "/api/auth/register",
-        json={"name": "", "phone": "+15550100", "password": "hunter22"},
+        json={"name": "", "phone": "+22220000100", "password": "hunter22"},
     )
     assert r.status_code == 422
 
@@ -49,7 +49,7 @@ async def test_login_happy_path(client: AsyncClient) -> None:
     await register(client)
     r = await client.post(
         "/api/auth/login",
-        json={"phone": "+15550100", "password": "hunter22"},
+        json={"phone": "+22220000100", "password": "hunter22"},
     )
     assert r.status_code == 200
     assert r.json()["access_token"]
@@ -59,7 +59,7 @@ async def test_login_wrong_password_returns_401(client: AsyncClient) -> None:
     await register(client)
     r = await client.post(
         "/api/auth/login",
-        json={"phone": "+15550100", "password": "wrong"},
+        json={"phone": "+22220000100", "password": "wrong"},
     )
     assert r.status_code == 401
 
@@ -67,7 +67,7 @@ async def test_login_wrong_password_returns_401(client: AsyncClient) -> None:
 async def test_login_unknown_phone_returns_401(client: AsyncClient) -> None:
     r = await client.post(
         "/api/auth/login",
-        json={"phone": "+99999999", "password": "whatever"},
+        json={"phone": "+22249999999", "password": "whatever"},
     )
     assert r.status_code == 401
 
@@ -96,7 +96,7 @@ async def test_login_constant_time_against_unknown_phone(client: AsyncClient) ->
     async def miss():
         r = await client.post(
             "/api/auth/login",
-            json={"phone": "+99999999", "password": "whatever"},
+            json={"phone": "+22249999999", "password": "whatever"},
         )
         assert r.status_code == 401
         miss_calls.append(r)
@@ -104,7 +104,7 @@ async def test_login_constant_time_against_unknown_phone(client: AsyncClient) ->
     async def wrong():
         r = await client.post(
             "/api/auth/login",
-            json={"phone": "+15550100", "password": "wrongpass"},
+            json={"phone": "+22220000100", "password": "wrongpass"},
         )
         assert r.status_code == 401
         wrong_calls.append(r)

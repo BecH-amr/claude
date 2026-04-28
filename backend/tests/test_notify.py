@@ -49,7 +49,7 @@ async def test_send_notification_no_provider_logs_and_returns_false(
     import logging
 
     with caplog.at_level(logging.INFO, logger="app.services.notify"):
-        ok = await notify.send_notification("+15550100", "your turn")
+        ok = await notify.send_notification("+22220000100", "your turn")
     assert ok is False
     assert any("notify-stub" in r.getMessage() for r in caplog.records)
 
@@ -81,7 +81,7 @@ async def test_whatsapp_success_short_circuits(monkeypatch) -> None:
 
     monkeypatch.setattr(notify.httpx, "AsyncClient", fake_client)
 
-    ok = await notify.send_notification("+15550100", "your turn")
+    ok = await notify.send_notification("+22220000100", "your turn")
     assert ok is True
     assert sms_called["hit"] is False
 
@@ -109,7 +109,7 @@ async def test_sms_fallback_on_whatsapp_http_error(monkeypatch) -> None:
 
     monkeypatch.setattr(notify.httpx, "AsyncClient", fake_client)
 
-    ok = await notify.send_notification("+15550100", "your turn")
+    ok = await notify.send_notification("+22220000100", "your turn")
     assert ok is True
 
 
@@ -140,7 +140,7 @@ async def test_whatsapp_payload_shape(monkeypatch) -> None:
 
     monkeypatch.setattr(notify.httpx, "AsyncClient", fake_client)
 
-    ok = await notify.send_notification("+15550100", "your turn")
+    ok = await notify.send_notification("+22220000100", "your turn")
     assert ok is True
     assert captured["url"] == "https://wa.example.com/v1/42/messages"
     assert captured["headers"]["authorization"] == "Bearer wat"
@@ -148,7 +148,7 @@ async def test_whatsapp_payload_shape(monkeypatch) -> None:
 
     body = _j.loads(captured["json"])
     assert body["messaging_product"] == "whatsapp"
-    assert body["to"] == "+15550100"
+    assert body["to"] == "+22220000100"
     assert body["type"] == "text"
     assert body["text"]["body"] == "your turn"
 
@@ -174,5 +174,5 @@ async def test_both_providers_fail_returns_false(monkeypatch) -> None:
 
     monkeypatch.setattr(notify.httpx, "AsyncClient", fake_client)
 
-    ok = await notify.send_notification("+15550100", "your turn")
+    ok = await notify.send_notification("+22220000100", "your turn")
     assert ok is False

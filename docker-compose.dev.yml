@@ -1,0 +1,52 @@
+# Dev overlay — apply with:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# Bind-mounts the source tree and swaps the production CMD for a hot-reload
+# server. The base images still build from the same Dockerfiles; the runtime
+# state and the deps installed inside the image are reused.
+
+services:
+  backend:
+    # Build the `builder` stage so we get uv + the dev deps (pytest etc.)
+    # available; the slim `runtime` stage strips them.
+    build:
+      context: ./backend
+      target: builder
+    # Mount the source over /app so edits are picked up live. The venv is
+    # named-volumed back on top of /app/.venv so it survives the bind.
+    volumes:
+      - ./backend:/app
+      - backend_venv:/app/.venv
+    environment:
+      ENVIRONMENT: development
+      # Re-sync with dev deps so pytest / aiosqlite are available inside
+      # the dev container.
+    command: >
+      sh -c "uv sync --frozen &&
+             uv run alembic upgrade head &&
+             uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app"
+
+  frontend:
+    # Build the `deps` stage (or rebuild deps in-place); next dev needs the
+    # full devDependencies, which the standalone runner strips.
+    build:
+      context: ./frontend
+      target: deps
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+      - frontend_next:/app/.next
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_BASE: http://backend:8000
+      # WSL2 / Docker Desktop FS events are flaky; polling is the safe default.
+      WATCHPACK_POLLING: "true"
+    # `next dev` reads NEXT_PUBLIC_API_BASE per-request, so no build arg
+    # plumbing needed in dev.
+    command: sh -c "npm install --silent && npm run dev"
+
+volumes:
+  backend_venv:
+  frontend_node_modules:
+  frontend_next:

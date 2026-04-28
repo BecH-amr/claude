@@ -103,7 +103,7 @@ def test_queue_ws_receives_join_broadcast(ws_app) -> None:
     # Set up business + queue via HTTP first.
     r = tc.post(
         "/api/auth/register",
-        json={"name": "Joe", "phone": "+15550100", "password": "hunter22"},
+        json={"name": "Joe", "phone": "+22220000100", "password": "hunter22"},
     )
     assert r.status_code == 201
     h = {"Authorization": f"Bearer {r.json()['access_token']}"}
@@ -140,11 +140,11 @@ def test_dashboard_ws_cross_business_closes_with_1008(ws_app) -> None:
 
     a = tc.post(
         "/api/auth/register",
-        json={"name": "A", "phone": "+15550111", "password": "hunter22"},
+        json={"name": "A", "phone": "+22220000111", "password": "hunter22"},
     ).json()
     b = tc.post(
         "/api/auth/register",
-        json={"name": "B", "phone": "+15550222", "password": "hunter22"},
+        json={"name": "B", "phone": "+22220000222", "password": "hunter22"},
     ).json()
     qid = tc.post(
         "/api/queues",
@@ -174,7 +174,7 @@ def test_dashboard_ws_session_bearer_rejected(ws_app) -> None:
     tc = TestClient(ws_app)
     a = tc.post(
         "/api/auth/register",
-        json={"name": "A", "phone": "+15550111", "password": "hunter22"},
+        json={"name": "A", "phone": "+22220000111", "password": "hunter22"},
     ).json()
     qid = tc.post(
         "/api/queues",
@@ -197,7 +197,7 @@ def test_dashboard_ws_ticket_grants_access(ws_app) -> None:
     tc = TestClient(ws_app)
     a = tc.post(
         "/api/auth/register",
-        json={"name": "A", "phone": "+15550111", "password": "hunter22"},
+        json={"name": "A", "phone": "+22220000111", "password": "hunter22"},
     ).json()
     h = {"Authorization": f"Bearer {a['access_token']}"}
     qid = tc.post("/api/queues", json={"name": "Cuts"}, headers=h).json()["id"]
@@ -222,7 +222,7 @@ def test_dashboard_ws_ticket_wrong_queue_rejected(ws_app) -> None:
     tc = TestClient(ws_app)
     a = tc.post(
         "/api/auth/register",
-        json={"name": "A", "phone": "+15550111", "password": "hunter22"},
+        json={"name": "A", "phone": "+22220000111", "password": "hunter22"},
     ).json()
     h = {"Authorization": f"Bearer {a['access_token']}"}
     q1 = tc.post("/api/queues", json={"name": "Q1"}, headers=h).json()["id"]

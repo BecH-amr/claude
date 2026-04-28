@@ -72,7 +72,7 @@ async def client(engine_override: None) -> AsyncIterator[AsyncClient]:
 # --- helpers --------------------------------------------------------------
 
 
-async def register(client: AsyncClient, *, phone: str = "+15550100", name: str = "Joe") -> dict:
+async def register(client: AsyncClient, *, phone: str = "+22220000100", name: str = "Joe") -> dict:
     r = await client.post(
         "/api/auth/register",
         json={"name": name, "phone": phone, "password": "hunter22"},
