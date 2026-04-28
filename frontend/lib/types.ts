@@ -37,6 +37,52 @@ export interface TicketStatusResponse {
   queue_status: QueueStatus;
 }
 
+export type BusinessType = "clinic" | "barber" | "gov" | "restaurant" | "other";
+
+export interface BusinessOut {
+  id: number;
+  name: string;
+  phone: string;
+  business_type: BusinessType;
+  address: string | null;
+  city: string | null;
+  country: string | null;
+  created_at: string;
+}
+
+export interface TokenOut {
+  access_token: string;
+  token_type: string;
+  business: BusinessOut;
+}
+
+export interface QueueOut {
+  id: number;
+  business_id: number;
+  name: string;
+  status: QueueStatus;
+  max_capacity: number | null;
+  auto_open_time: string | null;
+  auto_close_time: string | null;
+  close_on_max_reached: boolean;
+  current_ticket_number: number;
+  now_serving: number | null;
+  created_at: string;
+}
+
+export interface TicketOut {
+  id: number;
+  queue_id: number;
+  ticket_number: number;
+  customer_name: string | null;
+  customer_phone: string | null;
+  source: TicketSource;
+  status: TicketStatus;
+  joined_at: string;
+  called_at: string | null;
+  completed_at: string | null;
+}
+
 export interface QueueWsEvent {
   event: string;
   queue_id: number;

@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function Home() {
   return (
     <div className="flex flex-col h-full gap-10 pt-12">
@@ -12,6 +14,15 @@ export default function Home() {
           know when it&apos;s your turn. No app. No account.
         </p>
       </header>
+
+      <div className="card p-5">
+        <p className="text-sm text-ink-muted">
+          Run a clinic, barbershop, or counter?
+        </p>
+        <Link href="/login" className="btn-ghost mt-3 -mx-2 w-fit">
+          Get started for your business →
+        </Link>
+      </div>
 
       <footer className="mt-auto pt-10 text-xs text-ink-subtle">
         Free. Browser-first. Open source.

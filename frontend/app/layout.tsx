@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Newsreader } from "next/font/google";
 import "./globals.css";
+import { AuthProvider } from "@/lib/auth";
+import { I18nProvider } from "@/lib/i18n";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -38,9 +40,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${inter.variable} ${newsreader.variable}`}>
       <body className="min-h-dvh">
-        <main className="mx-auto max-w-md min-h-dvh px-5 py-8 flex flex-col">
-          {children}
-        </main>
+        <I18nProvider>
+          <AuthProvider>
+            <main className="mx-auto max-w-md min-h-dvh px-5 py-8 flex flex-col">
+              {children}
+            </main>
+          </AuthProvider>
+        </I18nProvider>
       </body>
     </html>
   );
