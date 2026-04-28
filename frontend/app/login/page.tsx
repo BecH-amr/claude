@@ -38,6 +38,9 @@ export default function LoginPage() {
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("common.error"));
+    } finally {
+      // finally so the button re-enables on every code path. router.push
+      // unmounts on success; in tests where it doesn't, the form is usable.
       setSubmitting(false);
     }
   }

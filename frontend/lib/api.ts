@@ -7,6 +7,7 @@ import type {
   TicketPublic,
   TicketStatusResponse,
   TokenOut,
+  WsTicketOut,
 } from "./types";
 
 class ApiError extends Error {
@@ -160,6 +161,17 @@ export const api = {
     ),
 
   qrUrl: (queueId: number) => `/api/queues/${enc(queueId)}/qr`,
+
+  // Mints a short-lived WS ticket (audience='ws', ~60s) so the dashboard
+  // can authenticate the WebSocket upgrade without putting the long-lived
+  // session bearer in the URL — proxy access logs would otherwise capture
+  // a 7-day credential.
+  getWsTicket: (queueId: number) =>
+    request<WsTicketOut>(
+      `/api/queues/${enc(queueId)}/ws-ticket`,
+      { method: "POST" },
+      { auth: true },
+    ),
 };
 
 export { ApiError };

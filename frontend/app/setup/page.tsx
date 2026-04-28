@@ -26,15 +26,27 @@ export default function SetupPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const cap = maxCapacityRaw.trim();
+      const capRaw = maxCapacityRaw.trim();
+      let max_capacity: number | null = null;
+      if (capRaw !== "") {
+        // parseInt + isInteger gate floats, NaN, negative, and zero. Number()
+        // accepts all four and coerces NaN→null in JSON, which the backend
+        // would interpret as "unlimited" — the opposite of the user's intent.
+        const parsed = Number.parseInt(capRaw, 10);
+        if (!Number.isInteger(parsed) || parsed < 1) {
+          throw new Error(t("common.error"));
+        }
+        max_capacity = parsed;
+      }
       const queue = await api.createQueue({
         name: name.trim(),
-        max_capacity: cap === "" ? null : Number(cap),
+        max_capacity,
         close_on_max_reached: closeOnMax,
       });
-      router.push(`/dashboard/${queue.id}`);
+      router.push(`/dashboard/${encodeURIComponent(String(queue.id))}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("common.error"));
+    } finally {
       setSubmitting(false);
     }
   }

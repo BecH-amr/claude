@@ -11,13 +11,11 @@ interface Props {
 const statusLabel: Record<QueueStatus, string> = {
   open: "Open",
   closed: "Closed",
-  paused: "Paused",
 };
 
 const statusDot: Record<QueueStatus, string> = {
   open: "bg-emerald-500",
   closed: "bg-ink-subtle",
-  paused: "bg-amber-500",
 };
 
 export default function QueueCard({

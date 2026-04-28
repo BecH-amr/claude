@@ -69,6 +69,17 @@ async def _send_sms(phone: str, message: str) -> bool:
         return False
 
 
+def _mask_phone(phone: str) -> str:
+    """Mask all but the last 4 digits so logs don't carry raw PII.
+
+    Preserves enough suffix to debug routing while satisfying GDPR/PDPA
+    minimization for unintended log retention by aggregators.
+    """
+    if len(phone) <= 4:
+        return "***"
+    return f"***{phone[-4:]}"
+
+
 async def send_notification(phone: str | None, message: str) -> bool:
     """Try WhatsApp first, then SMS. Returns True if any provider accepted the message.
 
@@ -81,5 +92,7 @@ async def send_notification(phone: str | None, message: str) -> bool:
         return True
     if await _send_sms(phone, message):
         return True
-    logger.info("[notify-stub] phone=%s msg=%s", phone, message)
+    # Stub path: providers unset. Don't log the raw phone — staging misconfig
+    # would otherwise spill customer numbers into log aggregators.
+    logger.info("[notify-stub] phone=%s msg=%s", _mask_phone(phone), message)
     return False

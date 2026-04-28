@@ -1,4 +1,4 @@
-export type QueueStatus = "open" | "closed" | "paused";
+export type QueueStatus = "open" | "closed";
 export type TicketStatus =
   | "waiting"
   | "called"
@@ -56,14 +56,17 @@ export interface TokenOut {
   business: BusinessOut;
 }
 
+export interface WsTicketOut {
+  ws_token: string;
+  expires_in: number;
+}
+
 export interface QueueOut {
   id: number;
   business_id: number;
   name: string;
   status: QueueStatus;
   max_capacity: number | null;
-  auto_open_time: string | null;
-  auto_close_time: string | null;
   close_on_max_reached: boolean;
   current_ticket_number: number;
   now_serving: number | null;

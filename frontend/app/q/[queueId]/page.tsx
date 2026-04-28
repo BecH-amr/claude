@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 import { useQueueSocket } from "@/hooks/useQueueSocket";
 import QueueCard from "@/components/QueueCard";
 import type { QueuePublic } from "@/lib/types";
@@ -10,6 +11,7 @@ import type { QueuePublic } from "@/lib/types";
 export default function JoinPage() {
   const params = useParams<{ queueId: string }>();
   const router = useRouter();
+  const { t } = useI18n();
   const queueId = params.queueId;
 
   const [queue, setQueue] = useState<QueuePublic | null>(null);
@@ -66,7 +68,9 @@ export default function JoinPage() {
     const isMissing = loadStatus === 404;
     return (
       <div className="flex flex-col h-full justify-center text-center gap-3">
-        <h1 className="text-3xl">{isMissing ? "Queue not found" : "Couldn't load queue"}</h1>
+        <h1 className="text-3xl">
+          {isMissing ? t("dash.couldNotLoad") : t("common.error")}
+        </h1>
         <p className="text-ink-muted">{loadError}</p>
         {!isMissing && (
           <button
@@ -74,7 +78,7 @@ export default function JoinPage() {
             className="btn-ghost mx-auto mt-2"
             onClick={() => location.reload()}
           >
-            Try again
+            {t("common.tryAgain")}
           </button>
         )}
       </div>
@@ -84,7 +88,7 @@ export default function JoinPage() {
   if (!queue) {
     return (
       <div className="flex flex-col h-full justify-center text-center text-ink-subtle">
-        Loading…
+        {t("common.loading")}
       </div>
     );
   }
@@ -104,9 +108,9 @@ export default function JoinPage() {
         customer_name: name.trim() || undefined,
         customer_phone: phone.trim() || undefined,
       });
-      router.push(`/t/${ticket.id}`);
+      router.push(`/t/${encodeURIComponent(String(ticket.id))}`);
     } catch (err) {
-      setSubmitError(err instanceof ApiError ? err.message : "Could not join, please try again.");
+      setSubmitError(err instanceof ApiError ? err.message : t("common.error"));
       setSubmitting(false);
     }
   }
@@ -114,10 +118,7 @@ export default function JoinPage() {
   return (
     <div className="flex flex-col gap-6">
       <header className="pt-2">
-        <p className="text-xs uppercase tracking-widest text-ink-subtle mb-2">Join</p>
-        <h1 className="text-3xl font-serif tracking-tightest">
-          You&apos;re a tap away from your spot.
-        </h1>
+        <h1 className="text-3xl font-serif tracking-tightest">{t("join.title")}</h1>
       </header>
 
       <div aria-live="polite">
@@ -131,28 +132,24 @@ export default function JoinPage() {
       </div>
 
       {!isOpen && (
-        <p className="card p-4 text-ink-muted text-sm">
-          This queue isn&apos;t open right now. Check back later.
-        </p>
+        <p className="card p-4 text-ink-muted text-sm">{t("join.closed")}</p>
       )}
 
       {isOpen && isFull && (
-        <p className="card p-4 text-ink-muted text-sm">
-          This queue is full at the moment. Try again in a few minutes.
-        </p>
+        <p className="card p-4 text-ink-muted text-sm">{t("join.full")}</p>
       )}
 
       {canJoin && (
         <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
           <div>
             <label htmlFor="name" className="label">
-              Name <span className="text-ink-subtle">(optional)</span>
+              {t("join.name")}{" "}
+              <span className="text-ink-subtle">{t("join.optional")}</span>
             </label>
             <input
               id="name"
               className="input"
               autoComplete="given-name"
-              placeholder="What should we call you?"
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={200}
@@ -161,7 +158,8 @@ export default function JoinPage() {
           </div>
           <div>
             <label htmlFor="phone" className="label">
-              Phone <span className="text-ink-subtle">(optional, for a ping when you&apos;re up)</span>
+              {t("join.phone")}{" "}
+              <span className="text-ink-subtle">{t("join.optional")}</span>
             </label>
             <input
               id="phone"
@@ -169,11 +167,12 @@ export default function JoinPage() {
               type="tel"
               autoComplete="tel"
               inputMode="tel"
-              placeholder="+1 555 010 0100"
+              placeholder="+15550100"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               maxLength={32}
               aria-describedby={submitError ? "submit-error" : undefined}
+              dir="ltr"
             />
           </div>
 
@@ -184,12 +183,8 @@ export default function JoinPage() {
           )}
 
           <button type="submit" className="btn-primary mt-2" disabled={submitting}>
-            {submitting ? "Joining…" : "Take my spot"}
+            {submitting ? t("join.submitting") : t("join.submit")}
           </button>
-
-          <p className="text-xs text-ink-subtle text-center">
-            No account, no tracking. Close this tab and come back anytime.
-          </p>
         </form>
       )}
     </div>

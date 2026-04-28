@@ -155,9 +155,86 @@ def test_dashboard_ws_cross_business_closes_with_1008(ws_app) -> None:
     from starlette.websockets import WebSocketDisconnect
 
     with pytest.raises(WebSocketDisconnect) as exc:
-        # B authenticates but tries to subscribe to A's queue dashboard.
+        # B's session bearer is rejected at decode time (wrong audience).
+        # Even if it parsed, the ticket would be queue-scoped and B can't
+        # mint one for A's queue. Either way: 1008.
         with tc.websocket_connect(
             f"/api/ws/dashboard/{qid}?token={b['access_token']}"
+        ) as ws:
+            ws.receive_text()
+    assert exc.value.code == 1008
+
+
+def test_dashboard_ws_session_bearer_rejected(ws_app) -> None:
+    """Long-lived session bearer is no longer accepted by the dashboard WS.
+
+    C1 mitigation: session bearers (7-day TTL) must never reach proxy
+    access logs via the WS query string. Only short-lived ws-tickets work.
+    """
+    tc = TestClient(ws_app)
+    a = tc.post(
+        "/api/auth/register",
+        json={"name": "A", "phone": "+15550111", "password": "hunter22"},
+    ).json()
+    qid = tc.post(
+        "/api/queues",
+        json={"name": "Cuts"},
+        headers={"Authorization": f"Bearer {a['access_token']}"},
+    ).json()["id"]
+
+    from starlette.websockets import WebSocketDisconnect
+
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with tc.websocket_connect(
+            f"/api/ws/dashboard/{qid}?token={a['access_token']}"
+        ) as ws:
+            ws.receive_text()
+    assert exc.value.code == 1008
+
+
+def test_dashboard_ws_ticket_grants_access(ws_app) -> None:
+    """REST exchange returns a ticket; WS upgrade with that ticket connects."""
+    tc = TestClient(ws_app)
+    a = tc.post(
+        "/api/auth/register",
+        json={"name": "A", "phone": "+15550111", "password": "hunter22"},
+    ).json()
+    h = {"Authorization": f"Bearer {a['access_token']}"}
+    qid = tc.post("/api/queues", json={"name": "Cuts"}, headers=h).json()["id"]
+
+    r = tc.post(f"/api/queues/{qid}/ws-ticket", headers=h)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["ws_token"]
+    assert body["expires_in"] >= 30
+
+    with tc.websocket_connect(
+        f"/api/ws/dashboard/{qid}?token={body['ws_token']}"
+    ) as ws:
+        # Force a broadcast and read it — proves the channel is live.
+        tc.post(f"/api/queues/{qid}/open", headers=h)
+        msg = ws.receive_json()
+        assert msg["queue_id"] == qid
+
+
+def test_dashboard_ws_ticket_wrong_queue_rejected(ws_app) -> None:
+    """A WS ticket for queue A is not valid for queue B (same business)."""
+    tc = TestClient(ws_app)
+    a = tc.post(
+        "/api/auth/register",
+        json={"name": "A", "phone": "+15550111", "password": "hunter22"},
+    ).json()
+    h = {"Authorization": f"Bearer {a['access_token']}"}
+    q1 = tc.post("/api/queues", json={"name": "Q1"}, headers=h).json()["id"]
+    q2 = tc.post("/api/queues", json={"name": "Q2"}, headers=h).json()["id"]
+
+    ticket_for_q1 = tc.post(f"/api/queues/{q1}/ws-ticket", headers=h).json()["ws_token"]
+
+    from starlette.websockets import WebSocketDisconnect
+
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with tc.websocket_connect(
+            f"/api/ws/dashboard/{q2}?token={ticket_for_q1}"
         ) as ws:
             ws.receive_text()
     assert exc.value.code == 1008
