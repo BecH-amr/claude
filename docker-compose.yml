@@ -49,6 +49,12 @@ services:
   frontend:
     build:
       context: ./frontend
+      args:
+        # Next bakes NEXT_PUBLIC_* into the server bundle at build time, so
+        # this must be a build arg, not just a runtime env var. The runtime
+        # env below is kept for parity / clarity but isn't what the rewrite
+        # actually reads.
+        NEXT_PUBLIC_API_BASE: http://backend:8000
     depends_on:
       - backend
     environment:
