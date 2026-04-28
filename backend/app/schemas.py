@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.business import BusinessType
 from app.models.queue import QueueStatus
+from app.models.ticket import TicketSource, TicketStatus
 
 
 class BusinessRegister(BaseModel):
@@ -80,3 +81,54 @@ class QueuePublic(BaseModel):
     waiting_count: int
     now_serving: int | None
     max_capacity: int | None
+
+
+class JoinRequest(BaseModel):
+    customer_name: str | None = Field(default=None, max_length=200)
+    customer_phone: str | None = Field(default=None, max_length=32)
+
+
+class WalkInRequest(BaseModel):
+    customer_name: str | None = Field(default=None, max_length=200)
+    customer_phone: str | None = Field(default=None, max_length=32)
+
+
+class TicketOut(BaseModel):
+    """Owner-only view including PII. Use TicketPublicOut for customer/public reads."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    queue_id: int
+    ticket_number: int
+    customer_name: str | None
+    customer_phone: str | None
+    source: TicketSource
+    status: TicketStatus
+    joined_at: datetime
+    called_at: datetime | None
+    completed_at: datetime | None
+
+
+class TicketPublicOut(BaseModel):
+    """Customer-facing ticket view. Strips PII (name/phone) so guessable
+    integer ticket IDs cannot be used to enumerate other customers' contact info."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    queue_id: int
+    ticket_number: int
+    source: TicketSource
+    status: TicketStatus
+    joined_at: datetime
+    called_at: datetime | None
+    completed_at: datetime | None
+
+
+class TicketStatusOut(BaseModel):
+    ticket: TicketPublicOut
+    position: int | None
+    waiting_count: int
+    now_serving: int | None
+    queue_status: QueueStatus

@@ -2,38 +2,23 @@ import io
 
 import qrcode
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db import get_db
 from app.deps import get_current_business
-from app.models import Business, Queue, QueueStatus, Ticket, TicketStatus
+from app.models import Business, Queue, QueueStatus
 from app.schemas import QueueCreate, QueueOut, QueuePublic, QueueUpdate
+from app.services.queue_service import get_queue_or_404, waiting_count
 
 router = APIRouter(prefix="/api/queues", tags=["queues"])
 settings = get_settings()
 
 
-async def _get_queue_or_404(db: AsyncSession, queue_id: int) -> Queue:
-    queue = await db.get(Queue, queue_id)
-    if not queue:
-        raise HTTPException(status_code=404, detail="Queue not found")
-    return queue
-
-
 def _ensure_owner(queue: Queue, business: Business) -> None:
     if queue.business_id != business.id:
         raise HTTPException(status_code=403, detail="Not your queue")
-
-
-async def _waiting_count(db: AsyncSession, queue_id: int) -> int:
-    result = await db.execute(
-        select(func.count(Ticket.id)).where(
-            Ticket.queue_id == queue_id, Ticket.status == TicketStatus.waiting
-        )
-    )
-    return int(result.scalar_one() or 0)
 
 
 @router.post("", response_model=QueueOut, status_code=status.HTTP_201_CREATED)
@@ -70,8 +55,8 @@ async def list_my_queues(
 
 @router.get("/{queue_id}", response_model=QueuePublic)
 async def get_queue_public(queue_id: int, db: AsyncSession = Depends(get_db)) -> QueuePublic:
-    queue = await _get_queue_or_404(db, queue_id)
-    waiting = await _waiting_count(db, queue.id)
+    queue = await get_queue_or_404(db, queue_id)
+    waiting = await waiting_count(db, queue.id)
     return QueuePublic(
         id=queue.id,
         name=queue.name,
@@ -90,7 +75,7 @@ async def update_queue(
     business: Business = Depends(get_current_business),
     db: AsyncSession = Depends(get_db),
 ) -> Queue:
-    queue = await _get_queue_or_404(db, queue_id)
+    queue = await get_queue_or_404(db, queue_id)
     _ensure_owner(queue, business)
 
     data = payload.model_dump(exclude_unset=True)
@@ -107,7 +92,7 @@ async def open_queue(
     business: Business = Depends(get_current_business),
     db: AsyncSession = Depends(get_db),
 ) -> Queue:
-    queue = await _get_queue_or_404(db, queue_id)
+    queue = await get_queue_or_404(db, queue_id)
     _ensure_owner(queue, business)
     queue.status = QueueStatus.open
     await db.commit()
@@ -121,7 +106,7 @@ async def close_queue(
     business: Business = Depends(get_current_business),
     db: AsyncSession = Depends(get_db),
 ) -> Queue:
-    queue = await _get_queue_or_404(db, queue_id)
+    queue = await get_queue_or_404(db, queue_id)
     _ensure_owner(queue, business)
     queue.status = QueueStatus.closed
     await db.commit()
@@ -131,7 +116,7 @@ async def close_queue(
 
 @router.get("/{queue_id}/qr")
 async def queue_qr(queue_id: int, db: AsyncSession = Depends(get_db)) -> Response:
-    queue = await _get_queue_or_404(db, queue_id)
+    queue = await get_queue_or_404(db, queue_id)
     join_url = f"{settings.public_base_url.rstrip('/')}/q/{queue.id}"
     img = qrcode.make(join_url)
     buf = io.BytesIO()

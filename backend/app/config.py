@@ -22,6 +22,13 @@ class Settings(BaseSettings):
 
     public_base_url: str = "http://localhost:3000"
 
+    whatsapp_api_url: str | None = None
+    whatsapp_api_token: str | None = None
+    whatsapp_phone_id: str | None = None
+
+    sms_api_url: str | None = None
+    sms_api_token: str | None = None
+
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
 
 
