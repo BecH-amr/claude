@@ -38,5 +38,5 @@ class Queue(Base):
 
     business: Mapped["Business"] = relationship(back_populates="queues", lazy="selectin")  # noqa: F821
     tickets: Mapped[list["Ticket"]] = relationship(  # noqa: F821
-        back_populates="queue", cascade="all, delete-orphan", lazy="selectin"
+        back_populates="queue", cascade="all, delete-orphan", lazy="raise"
     )
