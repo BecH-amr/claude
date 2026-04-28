@@ -58,6 +58,20 @@ async def get_ticket_status(ticket_id: int, db: AsyncSession = Depends(get_db)) 
     )
 
 
+@router.get("/api/queues/{queue_id}/tickets", response_model=list[TicketOut])
+async def list_active(
+    queue_id: int,
+    business: Business = Depends(get_current_business),
+    db: AsyncSession = Depends(get_db),
+) -> list[Ticket]:
+    """Owner-only: tickets currently in the working set (waiting + called +
+    serving). Used by the dashboard to repopulate the list on reload so
+    a refresh doesn't lose the called user."""
+    queue = await queue_service.get_queue_or_404(db, queue_id)
+    _ensure_owner_of_queue(queue, business)
+    return await queue_service.list_active_tickets(db, queue_id)
+
+
 @router.post("/api/queues/{queue_id}/call-next", response_model=TicketOut | None)
 async def call_next(
     queue_id: int,

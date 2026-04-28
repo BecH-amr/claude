@@ -129,6 +129,13 @@ export const api = {
     ),
 
   // Tickets — owner
+  listActiveTickets: (queueId: number) =>
+    request<TicketOut[]>(
+      `/api/queues/${enc(queueId)}/tickets`,
+      {},
+      { auth: true },
+    ),
+
   callNext: (queueId: number) =>
     request<TicketOut | null>(
       `/api/queues/${enc(queueId)}/call-next`,

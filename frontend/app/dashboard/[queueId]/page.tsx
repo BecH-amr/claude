@@ -33,24 +33,24 @@ export default function QueueDashboard() {
     if (ready && !token) router.replace("/login");
   }, [ready, token, router]);
 
-  // We don't have a backend list-tickets endpoint yet; this dashboard relies
-  // on the queue's `current_ticket_number`/`now_serving` plus call-next
-  // returning the next ticket. Local state holds owner-touched tickets so we
-  // can show called/waiting rows without polling the full set.
-  // Seeds `waiting_count` from the public read so the UI doesn't lie about
-  // "0 waiting" before the first WS event arrives.
+  // Pulls everything the dashboard needs to render correctly after a hard
+  // reload: queue metadata, public counts, and the active ticket list
+  // (waiting + called + serving). Without this last fetch the called user
+  // disappears from the UI on refresh — the bug that surfaced in dev.
   const refreshQueue = useCallback(async () => {
     if (queueId === null) return;
     const myId = ++reqIdRef.current;
     try {
-      const [list, pub] = await Promise.all([
+      const [list, pub, active] = await Promise.all([
         api.myQueues(),
         api.getQueue(queueId),
+        api.listActiveTickets(queueId),
       ]);
       if (myId !== reqIdRef.current) return;
       const q = list.find((x) => x.id === queueId) ?? null;
       setQueue(q);
       setWaitingCount(pub.waiting_count);
+      setTickets(active);
       setError(null);
     } catch (err) {
       if (myId !== reqIdRef.current) return;
@@ -67,7 +67,9 @@ export default function QueueDashboard() {
     if (token) refreshQueue();
   }, [token, refreshQueue]);
 
-  // Live updates from owner channel.
+  // Live updates from owner channel. WS events update counts + queue state
+  // optimistically; ticket-touching events trigger a refetch of the active
+  // list so a join from another tab shows up here without manual reload.
   const { event, status: wsStatus } = useDashboardSocket(queueId, token);
   useEffect(() => {
     if (!event) return;
@@ -82,7 +84,18 @@ export default function QueueDashboard() {
           }
         : q,
     );
-  }, [event]);
+    // Any ticket-state change can affect the active list; the cheapest
+    // correct path is to re-fetch. The reqIdRef guard inside refreshQueue
+    // makes overlapping calls safe.
+    if (
+      event.event === "ticket.joined" ||
+      event.event === "ticket.called" ||
+      event.event === "ticket.completed" ||
+      event.event === "ticket.no_show"
+    ) {
+      refreshQueue();
+    }
+  }, [event, refreshQueue]);
 
   /**
    * Generic mutation wrapper:
@@ -169,10 +182,9 @@ export default function QueueDashboard() {
     );
   }
 
-  // Active tickets the owner has touched recently (no backend list endpoint yet).
-  const active = tickets.filter(
-    (tt) => tt.queue_id === queueId && (tt.status === "called" || tt.status === "waiting"),
-  );
+  // The list endpoint returns exactly the working set (waiting+called+serving)
+  // so we trust its order and contents directly.
+  const active = tickets.filter((tt) => tt.queue_id === queueId);
   const wsLabel =
     wsStatus === "open"
       ? t("status.live")

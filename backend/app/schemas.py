@@ -55,6 +55,19 @@ class BusinessLogin(BaseModel):
     phone: str
     password: str
 
+    @field_validator("phone")
+    @classmethod
+    def _phone_normalized(cls, v: str) -> str:
+        # Normalize on login too so a customer who registered as "22065494"
+        # can log in with "+22222065494" or vice versa. We don't reject
+        # non-MR phones here (login should not enumerate validation rules
+        # to attackers); just best-effort normalize and let the DB lookup
+        # fall through to a 401 on mismatch.
+        try:
+            return _validate_phone(v)
+        except ValueError:
+            return v
+
 
 class BusinessOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)

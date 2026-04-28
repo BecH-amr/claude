@@ -36,6 +36,22 @@ async def waiting_count(db: AsyncSession, queue_id: int) -> int:
     return int(result.scalar_one() or 0)
 
 
+async def list_active_tickets(db: AsyncSession, queue_id: int) -> list[Ticket]:
+    """All tickets in the dashboard's working set: waiting + called + serving.
+
+    Ordered by ticket_number so the UI displays them in queue order. The
+    dashboard re-fetches this on (re)connect so a page reload doesn't lose
+    the called user.
+    """
+    active = (TicketStatus.waiting, TicketStatus.called, TicketStatus.serving)
+    result = await db.execute(
+        select(Ticket)
+        .where(Ticket.queue_id == queue_id, Ticket.status.in_(active))
+        .order_by(Ticket.ticket_number.asc())
+    )
+    return list(result.scalars().all())
+
+
 def position_for(ticket: Ticket, queue: Queue) -> int | None:
     """1-based position of a still-waiting ticket within the line.
 
