@@ -9,7 +9,6 @@ from app.schemas import (
     TicketOut,
     TicketPublicOut,
     TicketStatusOut,
-    WalkInRequest,
 )
 from app.services import queue_service
 
@@ -90,7 +89,7 @@ async def no_show(
 @router.post("/api/queues/{queue_id}/add-walkin", response_model=TicketOut, status_code=201)
 async def add_walkin(
     queue_id: int,
-    payload: WalkInRequest,
+    payload: JoinRequest,
     business: Business = Depends(get_current_business),
     db: AsyncSession = Depends(get_db),
 ) -> Ticket:
