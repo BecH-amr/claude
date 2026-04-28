@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
 
-from app.db import SessionLocal
+# Import the module (not just SessionLocal) so test fixtures that rebind
+# `app.db.SessionLocal` are honored — direct `from app.db import SessionLocal`
+# captures a stale reference at import time.
+from app import db as app_db
 from app.models import Queue
 from app.security import decode_token
 from app.services.ws_manager import manager
@@ -12,7 +15,7 @@ async def _queue_owner(queue_id: int) -> tuple[bool, int | None]:
     """Returns (exists, business_id). Opens a transient session and releases
     it before returning, so we don't hold a pooled connection for the
     lifetime of the WebSocket."""
-    async with SessionLocal() as db:
+    async with app_db.SessionLocal() as db:
         queue = await db.get(Queue, queue_id)
         if queue is None:
             return False, None
