@@ -8,6 +8,15 @@ import pytest
 from app.services import notify
 
 
+@pytest.fixture(autouse=True)
+def _reset_notify_client():
+    """Reset the cached module-level httpx client so each test starts fresh
+    and monkeypatches on httpx.AsyncClient take effect on the next call."""
+    notify._client = None
+    yield
+    notify._client = None
+
+
 def _patch_settings(monkeypatch, **values: Any) -> None:
     """Override get_settings() to return a stub with the given attrs.
 

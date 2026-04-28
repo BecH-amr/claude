@@ -50,8 +50,11 @@ class QueueCreate(BaseModel):
 
 
 class QueueUpdate(BaseModel):
+    # max_capacity matches QueueCreate (ge=1). 0 would mean "queue is always
+    # full" — a degenerate state that's almost certainly not what an owner
+    # wants. Set to None to clear the cap.
     name: str | None = Field(default=None, min_length=1, max_length=200)
-    max_capacity: int | None = Field(default=None, ge=0)
+    max_capacity: int | None = Field(default=None, ge=1)
     auto_open_time: time | None = None
     auto_close_time: time | None = None
     close_on_max_reached: bool | None = None
@@ -84,11 +87,6 @@ class QueuePublic(BaseModel):
 
 
 class JoinRequest(BaseModel):
-    customer_name: str | None = Field(default=None, max_length=200)
-    customer_phone: str | None = Field(default=None, max_length=32)
-
-
-class WalkInRequest(BaseModel):
     customer_name: str | None = Field(default=None, max_length=200)
     customer_phone: str | None = Field(default=None, max_length=32)
 

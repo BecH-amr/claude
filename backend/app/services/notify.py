@@ -7,6 +7,28 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# Reused across calls so connection pooling actually happens. The 10s timeout
+# matches the per-call budget — if a provider stalls we still want to fall
+# back to the next one within a reasonable window.
+_client: httpx.AsyncClient | None = None
+
+
+def _get_client() -> httpx.AsyncClient:
+    """Lazy module-level client. Creating it lazily means tests that patch
+    httpx.AsyncClient still see their patch take effect on first use."""
+    global _client
+    if _client is None:
+        _client = httpx.AsyncClient(timeout=10)
+    return _client
+
+
+async def aclose_clients() -> None:
+    """Hook for the FastAPI shutdown event so we don't leak sockets."""
+    global _client
+    if _client is not None:
+        await _client.aclose()
+        _client = None
+
 
 async def _send_whatsapp(phone: str, message: str) -> bool:
     s = get_settings()
@@ -24,10 +46,9 @@ async def _send_whatsapp(phone: str, message: str) -> bool:
         "text": {"body": message},
     }
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(url, json=payload, headers=headers)
-            resp.raise_for_status()
-            return True
+        resp = await _get_client().post(url, json=payload, headers=headers)
+        resp.raise_for_status()
+        return True
     except httpx.HTTPError as exc:
         logger.warning("WhatsApp send failed: %s", exc)
         return False
@@ -40,10 +61,9 @@ async def _send_sms(phone: str, message: str) -> bool:
     headers = {"Authorization": f"Bearer {s.sms_api_token}"}
     payload = {"to": phone, "message": message}
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(s.sms_api_url, json=payload, headers=headers)
-            resp.raise_for_status()
-            return True
+        resp = await _get_client().post(s.sms_api_url, json=payload, headers=headers)
+        resp.raise_for_status()
+        return True
     except httpx.HTTPError as exc:
         logger.warning("SMS send failed: %s", exc)
         return False

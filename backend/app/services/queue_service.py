@@ -12,9 +12,6 @@ from app.services.ws_manager import manager
 
 logger = logging.getLogger(__name__)
 
-# Statuses a ticket can validly transition out of via owner actions
-_FINISHABLE = {TicketStatus.called, TicketStatus.serving, TicketStatus.waiting}
-
 
 async def waiting_count(db: AsyncSession, queue_id: int) -> int:
     result = await db.execute(
