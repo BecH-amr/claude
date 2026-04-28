@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.db import get_db
 from app.deps import get_current_business
+from app.limiter import limiter
 from app.models import Business, Queue, Ticket, TicketSource
 from app.schemas import (
     JoinRequest,
@@ -13,6 +15,7 @@ from app.schemas import (
 from app.services import queue_service
 
 router = APIRouter(tags=["tickets"])
+_settings = get_settings()
 
 
 def _ensure_owner_of_queue(queue: Queue, business: Business) -> None:
@@ -28,8 +31,12 @@ async def _get_ticket_or_404(db: AsyncSession, ticket_id: int) -> Ticket:
 
 
 @router.post("/api/queues/{queue_id}/join", response_model=TicketPublicOut, status_code=201)
+@limiter.limit(_settings.rate_limit_join)
 async def join(
-    queue_id: int, payload: JoinRequest, db: AsyncSession = Depends(get_db)
+    request: Request,  # noqa: ARG001 — slowapi reads request.client.host
+    queue_id: int,
+    payload: JoinRequest,
+    db: AsyncSession = Depends(get_db),
 ) -> Ticket:
     queue = await queue_service.get_queue_or_404(db, queue_id)
     return await queue_service.join_queue(
@@ -49,6 +56,20 @@ async def get_ticket_status(ticket_id: int, db: AsyncSession = Depends(get_db)) 
         now_serving=queue.now_serving,
         queue_status=queue.status,
     )
+
+
+@router.get("/api/queues/{queue_id}/tickets", response_model=list[TicketOut])
+async def list_active(
+    queue_id: int,
+    business: Business = Depends(get_current_business),
+    db: AsyncSession = Depends(get_db),
+) -> list[Ticket]:
+    """Owner-only: tickets currently in the working set (waiting + called +
+    serving). Used by the dashboard to repopulate the list on reload so
+    a refresh doesn't lose the called user."""
+    queue = await queue_service.get_queue_or_404(db, queue_id)
+    _ensure_owner_of_queue(queue, business)
+    return await queue_service.list_active_tickets(db, queue_id)
 
 
 @router.post("/api/queues/{queue_id}/call-next", response_model=TicketOut | None)

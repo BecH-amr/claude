@@ -42,12 +42,18 @@ class ConnectionManager:
         await self._broadcast(self._dashboard_clients.get(queue_id, set()), message)
 
     async def broadcast_all(self, queue_id: int, message: dict[str, Any]) -> None:
-        await self.broadcast_queue(queue_id, message)
-        await self.broadcast_dashboard(queue_id, message)
+        await asyncio.gather(
+            self.broadcast_queue(queue_id, message),
+            self.broadcast_dashboard(queue_id, message),
+        )
 
     async def _broadcast(self, clients: set[WebSocket], message: dict[str, Any]) -> None:
+        # Snapshot under the lock so iteration can't observe a half-mutated
+        # set while another disconnect is in flight.
+        async with self._lock:
+            snapshot = list(clients)
         dead: list[WebSocket] = []
-        for ws in list(clients):
+        for ws in snapshot:
             try:
                 await ws.send_json(message)
             except Exception:

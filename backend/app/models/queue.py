@@ -10,7 +10,6 @@ from app.db import Base
 class QueueStatus(str, enum.Enum):
     open = "open"
     closed = "closed"
-    paused = "paused"
 
 
 class Queue(Base):
@@ -27,6 +26,10 @@ class Queue(Base):
         nullable=False,
     )
     max_capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # auto_open_time / auto_close_time stay in the schema but are no longer
+    # exposed via the API — there's no scheduler to act on them yet, and a
+    # write-only field creates false expectations. Re-expose once a job
+    # exists to honor them.
     auto_open_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     auto_close_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     close_on_max_reached: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -36,7 +39,10 @@ class Queue(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    business: Mapped["Business"] = relationship(back_populates="queues", lazy="selectin")  # noqa: F821
+    # lazy="raise" on both sides: callers must opt in via selectinload() when
+    # they actually traverse `.business` or `.tickets`. Avoids hidden N+1 on
+    # every db.get(Queue, …) call site.
+    business: Mapped["Business"] = relationship(back_populates="queues", lazy="raise")  # noqa: F821
     tickets: Mapped[list["Ticket"]] = relationship(  # noqa: F821
         back_populates="queue", cascade="all, delete-orphan", lazy="raise"
     )

@@ -57,8 +57,8 @@ async def test_patch_queue(client: AsyncClient) -> None:
 
 
 async def test_patch_queue_other_business_403(client: AsyncClient) -> None:
-    a = await register(client, phone="+15550111", name="A")
-    b = await register(client, phone="+15550222", name="B")
+    a = await register(client, phone="+22220000111", name="A")
+    b = await register(client, phone="+22220000222", name="B")
     qid = await make_queue(client, a["headers"])
 
     r = await client.patch(
@@ -80,8 +80,8 @@ async def test_open_close_lifecycle(client: AsyncClient) -> None:
 
 
 async def test_open_other_business_403(client: AsyncClient) -> None:
-    a = await register(client, phone="+15550111")
-    b = await register(client, phone="+15550222")
+    a = await register(client, phone="+22220000111")
+    b = await register(client, phone="+22220000222")
     qid = await make_queue(client, a["headers"], open_now=False)
 
     r = await client.post(f"/api/queues/{qid}/open", headers=b["headers"])
@@ -89,8 +89,8 @@ async def test_open_other_business_403(client: AsyncClient) -> None:
 
 
 async def test_list_my_queues_only_returns_own(client: AsyncClient) -> None:
-    a = await register(client, phone="+15550111")
-    b = await register(client, phone="+15550222")
+    a = await register(client, phone="+22220000111")
+    b = await register(client, phone="+22220000222")
     a_qid = await make_queue(client, a["headers"], name="A's queue")
     await make_queue(client, b["headers"], name="B's queue")
 

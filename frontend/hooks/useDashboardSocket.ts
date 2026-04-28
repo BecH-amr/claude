@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { api } from "@/lib/api";
 import type { QueueWsEvent } from "@/lib/types";
 
 type Status = "connecting" | "open" | "reconnecting" | "closed";
@@ -12,14 +13,16 @@ function wsUrlFor(path: string): string {
 }
 
 /**
- * Owner-authenticated dashboard channel. Token passed as `?token=` because
- * browsers can't set Authorization headers on WebSocket upgrades.
+ * Owner-authenticated dashboard channel.
  *
- * Mirrors the public hook's correctness pattern (timer in ref, per-socket
- * stale-close guard) and additionally halts reconnects on ANY 1008 close
- * (policy violation = unauthorized / not-your-queue / queue-not-found),
- * even after a previously successful open. That last bit prevents an
- * infinite reconnect storm after the backend revokes a token mid-session.
+ * Auth flow: REST → POST /api/queues/{id}/ws-ticket (with the session
+ * bearer) → 60s queue-scoped ticket → WS upgrade with ?token=<ticket>.
+ * The session bearer never enters the URL, so it never lands in proxy
+ * access logs. On reconnect we mint a fresh ticket because the previous
+ * one may have expired during the backoff window.
+ *
+ * The `token` parameter still gates the hook (no token = signed out),
+ * but is no longer interpolated into the URL.
  */
 export function useDashboardSocket(queueId: number | null, token: string | null) {
   const [event, setEvent] = useState<QueueWsEvent | null>(null);
@@ -34,13 +37,32 @@ export function useDashboardSocket(queueId: number | null, token: string | null)
     cancelledRef.current = false;
     retryRef.current = 0;
 
-    const safePath =
-      `/api/ws/dashboard/${encodeURIComponent(String(queueId))}` +
-      `?token=${encodeURIComponent(token)}`;
-
-    const connect = () => {
+    const connect = async () => {
       if (cancelledRef.current) return;
       setStatus(retryRef.current === 0 ? "connecting" : "reconnecting");
+
+      let ticket: string;
+      try {
+        const res = await api.getWsTicket(queueId);
+        ticket = res.ws_token;
+      } catch {
+        // Couldn't mint a ticket (token expired, network out, etc.).
+        // Treat as a soft close so the existing backoff fires.
+        if (cancelledRef.current) return;
+        const ceiling = Math.min(30_000, 500 * 2 ** retryRef.current);
+        const backoff = Math.floor(ceiling * (0.5 + Math.random() * 0.5));
+        retryRef.current += 1;
+        setStatus("reconnecting");
+        timerRef.current = setTimeout(() => {
+          void connect();
+        }, backoff);
+        return;
+      }
+      if (cancelledRef.current) return;
+
+      const safePath =
+        `/api/ws/dashboard/${encodeURIComponent(String(queueId))}` +
+        `?token=${encodeURIComponent(ticket)}`;
       const ws = new WebSocket(wsUrlFor(safePath));
       wsRef.current = ws;
 
@@ -70,8 +92,8 @@ export function useDashboardSocket(queueId: number | null, token: string | null)
           setStatus("closed");
           return;
         }
-        // Halt on 1008 (policy violation) — token revoked, queue gone, or
-        // ownership changed. Retrying just spams the backend.
+        // Halt on 1008 (policy violation) — ticket rejected, queue gone,
+        // or ownership changed. Retrying just spams the backend.
         if (ev.code === 1008) {
           setStatus("closed");
           return;
@@ -80,11 +102,13 @@ export function useDashboardSocket(queueId: number | null, token: string | null)
         const backoff = Math.floor(ceiling * (0.5 + Math.random() * 0.5));
         retryRef.current += 1;
         setStatus("reconnecting");
-        timerRef.current = setTimeout(connect, backoff);
+        timerRef.current = setTimeout(() => {
+          void connect();
+        }, backoff);
       });
     };
 
-    connect();
+    void connect();
 
     return () => {
       cancelledRef.current = true;

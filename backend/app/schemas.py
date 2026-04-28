@@ -1,10 +1,39 @@
-from datetime import datetime, time
+import re
+from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.business import BusinessType
 from app.models.queue import QueueStatus
 from app.models.ticket import TicketSource, TicketStatus
+
+
+# Phone format. Mauritania-first: 8 local digits starting with 2, 3, or 4
+# (the only valid mobile/landline prefixes assigned by ARE). The +222
+# country code is optional on input — we always normalize to +222XXXXXXXX
+# before storing so downstream code (WhatsApp/SMS providers, logs) sees a
+# single canonical form regardless of how the customer typed it.
+#
+# Accepts: "22065494", "20065494", "30000000", "+22220065494", "+222 2006 5494"
+# Rejects: "abc", "<script>", US numbers, any non-MR prefix
+_MR_LOCAL_RE = re.compile(r"^[234]\d{7}$")
+_MR_E164_RE = re.compile(r"^\+222[234]\d{7}$")
+
+
+def _validate_phone(value: str) -> str:
+    """Accept Mauritanian numbers in local or E.164 form; return E.164.
+
+    Strips spaces and dashes (formatting users naturally add) before checking.
+    """
+    cleaned = re.sub(r"[\s\-]", "", value)
+    if _MR_E164_RE.match(cleaned):
+        return cleaned
+    if _MR_LOCAL_RE.match(cleaned):
+        return f"+222{cleaned}"
+    raise ValueError(
+        "phone must be a Mauritanian number — 8 digits starting with 2, 3, or 4 "
+        "(optionally prefixed with +222), e.g. 22065494 or +22222065494"
+    )
 
 
 class BusinessRegister(BaseModel):
@@ -16,10 +45,28 @@ class BusinessRegister(BaseModel):
     city: str | None = None
     country: str | None = None
 
+    @field_validator("phone")
+    @classmethod
+    def _phone_e164(cls, v: str) -> str:
+        return _validate_phone(v)
+
 
 class BusinessLogin(BaseModel):
     phone: str
     password: str
+
+    @field_validator("phone")
+    @classmethod
+    def _phone_normalized(cls, v: str) -> str:
+        # Normalize on login too so a customer who registered as "22065494"
+        # can log in with "+22222065494" or vice versa. We don't reject
+        # non-MR phones here (login should not enumerate validation rules
+        # to attackers); just best-effort normalize and let the DB lookup
+        # fall through to a 401 on mismatch.
+        try:
+            return _validate_phone(v)
+        except ValueError:
+            return v
 
 
 class BusinessOut(BaseModel):
@@ -41,11 +88,23 @@ class TokenOut(BaseModel):
     business: BusinessOut
 
 
+class WsTicketOut(BaseModel):
+    """Short-lived ticket exchanged for a WS upgrade.
+
+    Carries no PII and is single-use within ~60s, so the URL containing it
+    is safe to log in the proxy access log.
+    """
+
+    ws_token: str
+    expires_in: int
+
+
 class QueueCreate(BaseModel):
+    # auto_open_time / auto_close_time are intentionally absent — there's
+    # no scheduler to act on them. Leaving them in the API was a broken
+    # contract.
     name: str = Field(min_length=1, max_length=200)
     max_capacity: int | None = Field(default=None, ge=1)
-    auto_open_time: time | None = None
-    auto_close_time: time | None = None
     close_on_max_reached: bool = False
 
 
@@ -55,8 +114,6 @@ class QueueUpdate(BaseModel):
     # wants. Set to None to clear the cap.
     name: str | None = Field(default=None, min_length=1, max_length=200)
     max_capacity: int | None = Field(default=None, ge=1)
-    auto_open_time: time | None = None
-    auto_close_time: time | None = None
     close_on_max_reached: bool | None = None
 
 
@@ -68,8 +125,6 @@ class QueueOut(BaseModel):
     name: str
     status: QueueStatus
     max_capacity: int | None
-    auto_open_time: time | None
-    auto_close_time: time | None
     close_on_max_reached: bool
     current_ticket_number: int
     now_serving: int | None
@@ -89,6 +144,13 @@ class QueuePublic(BaseModel):
 class JoinRequest(BaseModel):
     customer_name: str | None = Field(default=None, max_length=200)
     customer_phone: str | None = Field(default=None, max_length=32)
+
+    @field_validator("customer_phone")
+    @classmethod
+    def _phone_e164_optional(cls, v: str | None) -> str | None:
+        if v is None or v == "":
+            return None
+        return _validate_phone(v)
 
 
 class TicketOut(BaseModel):

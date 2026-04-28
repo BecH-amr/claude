@@ -3,20 +3,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
+import { useI18n, type StringKey } from "@/lib/i18n";
 import { useQueueSocket } from "@/hooks/useQueueSocket";
-import type { TicketStatusResponse } from "@/lib/types";
+import type { TicketStatus, TicketStatusResponse } from "@/lib/types";
 
-const callOutCopy: Record<string, { headline: string; sub: string }> = {
-  waiting: { headline: "You're in line.", sub: "We'll keep this page in sync." },
-  called: { headline: "It's your turn.", sub: "Please come now." },
-  serving: { headline: "You're being served.", sub: "" },
-  completed: { headline: "All done.", sub: "Thanks for using Q." },
-  no_show: { headline: "We missed you.", sub: "Tap join again to retake your spot." },
-  cancelled: { headline: "Cancelled.", sub: "" },
+// Typed as Record<TicketStatus, …> so adding a new status to the backend
+// surfaces here as a TS error instead of silently falling through to the
+// default. Each value is an i18n key; the page resolves them at render.
+const STATUS_HEADLINE: Record<TicketStatus, StringKey> = {
+  waiting: "status.waiting",
+  called: "status.called",
+  serving: "status.serving",
+  completed: "status.completed",
+  no_show: "status.no_show",
+  cancelled: "status.cancelled",
 };
 
 export default function StatusPage() {
   const params = useParams<{ ticketId: string }>();
+  const { t } = useI18n();
   const ticketId = params.ticketId;
 
   const [data, setData] = useState<TicketStatusResponse | null>(null);
@@ -60,7 +65,9 @@ export default function StatusPage() {
     const isMissing = errorStatus === 404;
     return (
       <div className="flex flex-col h-full justify-center text-center gap-3">
-        <h1 className="text-3xl">{isMissing ? "Ticket not found" : "Couldn't load ticket"}</h1>
+        <h1 className="text-3xl">
+          {isMissing ? t("dash.couldNotLoad") : t("common.error")}
+        </h1>
         <p className="text-ink-muted">{error}</p>
         {!isMissing && (
           <button
@@ -68,7 +75,7 @@ export default function StatusPage() {
             className="btn-ghost mx-auto mt-2"
             onClick={() => location.reload()}
           >
-            Try again
+            {t("common.tryAgain")}
           </button>
         )}
       </div>
@@ -78,30 +85,23 @@ export default function StatusPage() {
   if (!data) {
     return (
       <div className="flex flex-col h-full justify-center text-center text-ink-subtle">
-        Loading…
+        {t("common.loading")}
       </div>
     );
   }
 
   const { ticket, position, waiting_count, now_serving } = data;
-  const copy = callOutCopy[ticket.status] ?? callOutCopy.waiting;
+  const headline = t(STATUS_HEADLINE[ticket.status]);
   const isHighlighted = ticket.status === "called" || ticket.status === "serving";
   const accent = isHighlighted ? "bg-coral text-cream" : "bg-cream-raised text-ink";
-  const wsText =
-    wsStatus === "open"
-      ? "connected"
-      : wsStatus === "reconnecting"
-      ? "reconnecting…"
-      : wsStatus;
 
   return (
     <div className="flex flex-col h-full gap-6">
       <header className="pt-2">
         <p className="text-xs uppercase tracking-widest text-ink-subtle mb-2">
-          Ticket #{ticket.ticket_number}
+          #{ticket.ticket_number}
         </p>
-        <h1 className="text-3xl font-serif tracking-tightest">{copy.headline}</h1>
-        {copy.sub && <p className="mt-2 text-ink-muted">{copy.sub}</p>}
+        <h1 className="text-3xl font-serif tracking-tightest">{headline}</h1>
       </header>
 
       <section
@@ -113,24 +113,21 @@ export default function StatusPage() {
             isHighlighted ? "text-cream/90" : "text-ink-subtle"
           }`}
         >
-          {ticket.status === "waiting" ? "Position" : "Status"}
+          {t("status.position")}
         </p>
         <p className="text-7xl font-serif tracking-tightest leading-none">
-          {ticket.status === "waiting" ? (position ?? "—") : ticket.status.replace("_", " ")}
+          {ticket.status === "waiting" ? (position ?? "—") : headline}
         </p>
         {ticket.status === "waiting" && (
           <p className={`mt-4 text-sm ${isHighlighted ? "" : "text-ink-muted"}`}>
-            {waiting_count} {waiting_count === 1 ? "person" : "people"} waiting · now serving{" "}
-            {now_serving ?? "—"}
+            {waiting_count} · {now_serving ?? "—"}
           </p>
         )}
       </section>
 
-      <p className="text-center text-xs text-ink-subtle">Live · {wsText}</p>
-
-      <footer className="mt-auto pt-6 text-center text-xs text-ink-subtle">
-        Keep this tab open to stay in sync.
-      </footer>
+      <p className="text-center text-xs text-ink-subtle">
+        {t("status.live")} · {wsStatus}
+      </p>
     </div>
   );
 }

@@ -1,6 +1,9 @@
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_DEFAULT_JWT_SECRET = "change-me-in-production"
 
 
 class Settings(BaseSettings):
@@ -16,7 +19,7 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://localhost:6379/0"
 
-    jwt_secret: str = "change-me-in-production"
+    jwt_secret: str = _DEFAULT_JWT_SECRET
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24 * 7  # 7 days
 
@@ -30,6 +33,22 @@ class Settings(BaseSettings):
     sms_api_token: str | None = None
 
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+
+    # Per-IP rate limits. Login is intentionally tight to make password
+    # spraying expensive on top of bcrypt cost; join is loose enough for a
+    # busy in-store rush but tight enough to deter capacity-flooding bots.
+    rate_limit_login: str = "10/minute"
+    rate_limit_join: str = "30/minute"
+
+    @model_validator(mode="after")
+    def _reject_default_secret_in_prod(self) -> "Settings":
+        # In production an unset/default jwt_secret means anyone with the
+        # source can mint valid tokens. Fail loud at import time.
+        if self.environment == "production" and self.jwt_secret == _DEFAULT_JWT_SECRET:
+            raise ValueError(
+                "jwt_secret must be set to a strong random value when environment=production"
+            )
+        return self
 
 
 @lru_cache

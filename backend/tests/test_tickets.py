@@ -14,7 +14,7 @@ async def test_join_open_queue_returns_ticket_without_pii(client: AsyncClient) -
 
     r = await client.post(
         f"/api/queues/{qid}/join",
-        json={"customer_name": "Alice", "customer_phone": "+15550001"},
+        json={"customer_name": "Alice", "customer_phone": "+22220000001"},
     )
     assert r.status_code == 201
     body = r.json()
@@ -184,8 +184,8 @@ async def test_walkin_uses_walk_in_source(client: AsyncClient) -> None:
 
 
 async def test_walkin_requires_owner(client: AsyncClient) -> None:
-    a = await register(client, phone="+15550111")
-    b = await register(client, phone="+15550222")
+    a = await register(client, phone="+22220000111")
+    b = await register(client, phone="+22220000222")
     qid = await make_queue(client, a["headers"])
 
     r = await client.post(
@@ -218,8 +218,8 @@ async def test_call_next_fifo_across_app_and_walkin(client: AsyncClient) -> None
 
 
 async def test_owner_only_ticket_endpoints_403(client: AsyncClient) -> None:
-    a = await register(client, phone="+15550111")
-    b = await register(client, phone="+15550222")
+    a = await register(client, phone="+22220000111")
+    b = await register(client, phone="+22220000222")
     qid = await make_queue(client, a["headers"])
     tid = (await client.post(f"/api/queues/{qid}/join", json={})).json()["id"]
 

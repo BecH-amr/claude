@@ -1,18 +1,26 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.db import get_db
+from app.limiter import limiter
 from app.models import Business
 from app.schemas import BusinessLogin, BusinessOut, BusinessRegister, TokenOut
 from app.security import create_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+_settings = get_settings()
 
 
 @router.post("/register", response_model=TokenOut, status_code=status.HTTP_201_CREATED)
-async def register(payload: BusinessRegister, db: AsyncSession = Depends(get_db)) -> TokenOut:
+@limiter.limit(_settings.rate_limit_login)
+async def register(
+    request: Request,  # noqa: ARG001 — slowapi reads request.client.host
+    payload: BusinessRegister,
+    db: AsyncSession = Depends(get_db),
+) -> TokenOut:
     existing = await db.execute(select(Business).where(Business.phone == payload.phone))
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail="Phone already registered")
@@ -45,7 +53,12 @@ _DUMMY_HASH = hash_password("__dummy_for_constant_time__")
 
 
 @router.post("/login", response_model=TokenOut)
-async def login(payload: BusinessLogin, db: AsyncSession = Depends(get_db)) -> TokenOut:
+@limiter.limit(_settings.rate_limit_login)
+async def login(
+    request: Request,  # noqa: ARG001 — slowapi reads request.client.host
+    payload: BusinessLogin,
+    db: AsyncSession = Depends(get_db),
+) -> TokenOut:
     result = await db.execute(select(Business).where(Business.phone == payload.phone))
     business = result.scalar_one_or_none()
     target_hash = business.password_hash if business else _DUMMY_HASH

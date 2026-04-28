@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Queue, QueueStatus, Ticket, TicketSource, TicketStatus
@@ -11,6 +11,20 @@ from app.services import notify
 from app.services.ws_manager import manager
 
 logger = logging.getLogger(__name__)
+
+# Strong references to fire-and-forget tasks. The asyncio loop only holds
+# weak refs to tasks created via create_task, so without this set the
+# notification coroutine can be GC'd before it awaits — silently dropping
+# the WhatsApp/SMS send.
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _fire_and_forget(coro) -> None:
+    """Schedule a coroutine without blocking the caller, holding a strong
+    reference until it completes."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 async def waiting_count(db: AsyncSession, queue_id: int) -> int:
@@ -20,6 +34,22 @@ async def waiting_count(db: AsyncSession, queue_id: int) -> int:
         )
     )
     return int(result.scalar_one() or 0)
+
+
+async def list_active_tickets(db: AsyncSession, queue_id: int) -> list[Ticket]:
+    """All tickets in the dashboard's working set: waiting + called + serving.
+
+    Ordered by ticket_number so the UI displays them in queue order. The
+    dashboard re-fetches this on (re)connect so a page reload doesn't lose
+    the called user.
+    """
+    active = (TicketStatus.waiting, TicketStatus.called, TicketStatus.serving)
+    result = await db.execute(
+        select(Ticket)
+        .where(Ticket.queue_id == queue_id, Ticket.status.in_(active))
+        .order_by(Ticket.ticket_number.asc())
+    )
+    return list(result.scalars().all())
 
 
 def position_for(ticket: Ticket, queue: Queue) -> int | None:
@@ -52,42 +82,57 @@ async def join_queue(
     customer_phone: str | None,
     source: TicketSource = TicketSource.app,
 ) -> Ticket:
+    """Atomically reserve the next ticket number, respecting capacity.
+
+    Locks the queue row with SELECT … FOR UPDATE so concurrent joins can't
+    both pass the capacity gate or both grab the same ticket number. SQLite
+    (used in tests) silently no-ops the lock — its single-writer model
+    serializes anyway, so the test suite is unaffected.
+    """
     if queue.status != QueueStatus.open:
         raise HTTPException(status_code=400, detail="Queue is not open")
 
-    waiting = await waiting_count(db, queue.id)
-    if queue.max_capacity is not None and waiting >= queue.max_capacity:
+    # Re-fetch under a row lock. Concurrent joiners block here instead of
+    # racing past the capacity check.
+    locked = (
+        await db.execute(
+            select(Queue).where(Queue.id == queue.id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if locked is None:
+        raise HTTPException(status_code=404, detail="Queue not found")
+    if locked.status != QueueStatus.open:
+        raise HTTPException(status_code=400, detail="Queue is not open")
+
+    waiting = await waiting_count(db, locked.id)
+    if locked.max_capacity is not None and waiting >= locked.max_capacity:
         raise HTTPException(status_code=400, detail="Queue is full")
 
-    queue.current_ticket_number += 1
+    locked.current_ticket_number += 1
     ticket = Ticket(
-        queue_id=queue.id,
-        ticket_number=queue.current_ticket_number,
+        queue_id=locked.id,
+        ticket_number=locked.current_ticket_number,
         customer_name=customer_name,
         customer_phone=customer_phone,
         source=source,
         status=TicketStatus.waiting,
     )
     db.add(ticket)
+
+    waiting_after = waiting + 1
+    if (
+        locked.max_capacity is not None
+        and locked.close_on_max_reached
+        and waiting_after >= locked.max_capacity
+    ):
+        locked.status = QueueStatus.closed
+
     await db.commit()
     await db.refresh(ticket)
-    await db.refresh(queue)
-
-    # We just added one; recompute incrementally instead of a second SELECT.
-    waiting_after = waiting + 1
-
-    # Auto-close if max reached after this join
-    if (
-        queue.max_capacity is not None
-        and queue.close_on_max_reached
-        and waiting_after >= queue.max_capacity
-    ):
-        queue.status = QueueStatus.closed
-        await db.commit()
-        await db.refresh(queue)
+    await db.refresh(locked)
 
     await broadcast_state(
-        queue,
+        locked,
         waiting_after,
         event="ticket.joined",
         extra={"ticket_id": ticket.id, "ticket_number": ticket.ticket_number},
@@ -123,7 +168,7 @@ async def call_next(db: AsyncSession, queue: Queue) -> Ticket | None:
             f"It's your turn at {queue.name}. "
             f"Ticket #{ticket.ticket_number}. Please come now."
         )
-        asyncio.create_task(_safe_notify(ticket.customer_phone, msg))
+        _fire_and_forget(_safe_notify(ticket.customer_phone, msg))
 
     waiting = await waiting_count(db, queue.id)
     await broadcast_state(
@@ -136,14 +181,29 @@ async def call_next(db: AsyncSession, queue: Queue) -> Ticket | None:
 
 
 async def complete_ticket(db: AsyncSession, ticket: Ticket) -> Ticket:
+    """Mark a called/serving ticket completed.
+
+    Conditional UPDATE so two concurrent complete requests for the same
+    ticket can't both broadcast 'completed' — only the first matches the
+    predicate. The Python check below is the user-friendly 400 path.
+    """
     if ticket.status not in (TicketStatus.called, TicketStatus.serving):
         raise HTTPException(
             status_code=400,
             detail=f"Cannot complete ticket in status '{ticket.status.value}'",
         )
-    ticket.status = TicketStatus.completed
-    ticket.completed_at = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
+    res = await db.execute(
+        update(Ticket)
+        .where(
+            Ticket.id == ticket.id,
+            Ticket.status.in_([TicketStatus.called, TicketStatus.serving]),
+        )
+        .values(status=TicketStatus.completed, completed_at=now)
+    )
     await db.commit()
+    if res.rowcount == 0:
+        raise HTTPException(status_code=409, detail="Ticket already advanced")
     await db.refresh(ticket)
     queue = await db.get(Queue, ticket.queue_id)
     if queue:
@@ -160,9 +220,18 @@ async def no_show_ticket(db: AsyncSession, ticket: Ticket) -> Ticket:
             status_code=400,
             detail=f"Cannot mark no-show on ticket in status '{ticket.status.value}'",
         )
-    ticket.status = TicketStatus.no_show
-    ticket.completed_at = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
+    res = await db.execute(
+        update(Ticket)
+        .where(
+            Ticket.id == ticket.id,
+            Ticket.status.in_([TicketStatus.called, TicketStatus.waiting]),
+        )
+        .values(status=TicketStatus.no_show, completed_at=now)
+    )
     await db.commit()
+    if res.rowcount == 0:
+        raise HTTPException(status_code=409, detail="Ticket already advanced")
     await db.refresh(ticket)
     queue = await db.get(Queue, ticket.queue_id)
     if queue:

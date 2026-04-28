@@ -10,7 +10,14 @@ pool transparently — no app-code changes needed.
 
 from __future__ import annotations
 
+import os
 from typing import AsyncIterator
+
+# slowapi reads its limit string at decorator import time. Make limits
+# generous in tests so the timing-oracle suite (10+ login calls) and
+# rate-limiting are not in conflict. Set BEFORE importing app.config.
+os.environ.setdefault("RATE_LIMIT_LOGIN", "10000/minute")
+os.environ.setdefault("RATE_LIMIT_JOIN", "10000/minute")
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -65,7 +72,7 @@ async def client(engine_override: None) -> AsyncIterator[AsyncClient]:
 # --- helpers --------------------------------------------------------------
 
 
-async def register(client: AsyncClient, *, phone: str = "+15550100", name: str = "Joe") -> dict:
+async def register(client: AsyncClient, *, phone: str = "+22220000100", name: str = "Joe") -> dict:
     r = await client.post(
         "/api/auth/register",
         json={"name": name, "phone": phone, "password": "hunter22"},

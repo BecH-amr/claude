@@ -1,0 +1,66 @@
+# Dev overlay — apply with:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# Bind-mounts only the source files we actually edit, leaving the deps that
+# the image installed (node_modules, .venv) untouched. Named volumes for
+# node_modules / .venv are intentionally avoided — they collide with the
+# image's installed copy on first up and cause ENOTEMPTY install errors.
+
+services:
+  backend:
+    # Build the `builder` stage so uv + dev deps (pytest etc.) are available;
+    # the slim `runtime` stage strips them.
+    build:
+      context: ./backend
+      target: builder
+    # Mount source subdirs individually so /app/.venv (built in the image)
+    # is not shadowed. Anything Python actually edits lives under app/,
+    # alembic/, or tests/.
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/alembic:/app/alembic
+      - ./backend/tests:/app/tests
+      - ./backend/pyproject.toml:/app/pyproject.toml
+      - ./backend/uv.lock:/app/uv.lock
+      - ./backend/alembic.ini:/app/alembic.ini
+    environment:
+      ENVIRONMENT: development
+    # uv sync (with dev deps) runs once at startup so pytest is available
+    # inside the running container if you docker exec into it.
+    command: >
+      sh -c "uv sync --frozen &&
+             uv run alembic upgrade head &&
+             uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app"
+
+  frontend:
+    # Build the `deps` stage so we get a complete node_modules with dev deps.
+    build:
+      context: ./frontend
+      target: deps
+    working_dir: /app
+    # Same pattern as backend: bind source dirs, leave node_modules from the
+    # image alone. .next is created fresh on each `next dev`.
+    volumes:
+      - ./frontend/app:/app/app
+      - ./frontend/components:/app/components
+      - ./frontend/hooks:/app/hooks
+      - ./frontend/lib:/app/lib
+      - ./frontend/public:/app/public
+      - ./frontend/tests:/app/tests
+      - ./frontend/package.json:/app/package.json
+      - ./frontend/package-lock.json:/app/package-lock.json
+      - ./frontend/tsconfig.json:/app/tsconfig.json
+      - ./frontend/next.config.mjs:/app/next.config.mjs
+      - ./frontend/tailwind.config.ts:/app/tailwind.config.ts
+      - ./frontend/postcss.config.mjs:/app/postcss.config.mjs
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_BASE: http://backend:8000
+      # WSL2 / Docker Desktop FS events are unreliable; polling is the safe
+      # default for hot reload.
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+    # next dev evaluates rewrites() per-process startup, so the env above is
+    # picked up without rebuilding. No `npm install` here — deps came from
+    # the deps build stage and aren't shadowed by a named volume.
+    command: npx next dev -p 3000 -H 0.0.0.0
